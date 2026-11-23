@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CaseTrace</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f6f5f1;--card:#fff;--tx:#1f1e1b;--mu:#6b6a64;--bd:#dedcd4;--ac:#7a2e2e;--ok:#2f7a4f;--wn:#a8661a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#171614;--card:#222120;--tx:#ecebe6;--mu:#a09f98;--bd:#36342f;--ac:#d98a8a;--ok:#6cc08c;--wn:#e0a458}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#171614;--card:#222120;--tx:#ecebe6;--mu:#a09f98;--bd:#36342f;--ac:#d98a8a;--ok:#6cc08c;--wn:#e0a458}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:16px 16px 8px;max-width:900px;margin:auto}
+h1{margin:0;font-size:20px;letter-spacing:.5px}
+.sub{color:var(--mu);font-size:13px}
+nav{display:flex;gap:6px;overflow-x:auto;padding:8px 16px;max-width:900px;margin:auto}
+nav button{flex:none;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:7px 12px;border-radius:999px;cursor:pointer;font:inherit;font-size:13px}
+nav button.on{background:var(--ac);color:var(--bg);border-color:var(--ac)}
+main{max-width:900px;margin:auto;padding:8px 16px 40px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin:0 0 10px}
+.card h3{margin:0 0 4px;font-size:16px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.mu{color:var(--mu);font-size:13px}
+.tag{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--bd);color:var(--mu)}
+.tag.ok{color:var(--ok);border-color:var(--ok)}.tag.wn{color:var(--wn);border-color:var(--wn)}
+.bar{display:flex;gap:2px;margin:6px 0}.bar i{width:100%;max-width:22px;height:8px;border-radius:2px;background:var(--bd)}.bar i.f{background:var(--ac)}
+button.b,select,input{font:inherit;font-size:13px;padding:6px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--card);color:var(--tx)}
+button.b{cursor:pointer}button.b:hover:not(:disabled){border-color:var(--ac)}button.b:disabled{opacity:.45;cursor:default}
+button.p{background:var(--ac);color:var(--bg);border-color:var(--ac)}
+form,.form{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+h2{font-size:15px;margin:16px 0 8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px}
+.stat{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px;text-align:center}.stat b{display:block;font-size:22px}
+.tl{border-left:2px solid var(--bd);margin-left:6px;padding-left:14px}
+.verdict{border-color:var(--ac);border-width:2px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.on{opacity:1}
+</style></head><body>
+<header><h1>🔍 CASETRACE</h1><div class="sub" id="case"></div></header>
+<nav id="nav"></nav><main id="main"></main><div id="toast"></div>
+<script>
+const S={title:'The Blackwood Estate Incident',victim:'Lord Alistair Blackwood',sus:[],clues:[],ev:[],events:[],edges:[],hist:[],tab:'overview',verdict:null,path:null};
+const TYPES=['Physical','Testimonial','Digital','Circumstantial'],ETYPES=['Fingerprint','DNA','Weapon','Forensic','Document','Witness'];
+const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const act=t=>S.hist.unshift(t),fs=n=>S.sus.find(s=>s.name.toLowerCase()===String(n).toLowerCase());
+const bump=(n,x)=>{const s=fs(n);if(s)s.lv=Math.max(0,Math.min(10,s.lv+x))};
+function toast(m){const t=$('toast');t.textContent=m;t.className='on';clearTimeout(toast.h);toast.h=setTimeout(()=>t.className='',1800)}
+function addSus(name,d,a,m,me,g){S.sus.push({name,d,a,m,me,g,lv:0,int:false});act('Added suspect: '+name)}
+function addClue(d,l,t,ty){S.clues.push({id:S.clues.length+1,d,l,t,ty,disc:false,links:[]});act('Catalogued clue: '+d)}
+function addEv(d,sn,st,ty){S.ev.push({id:S.ev.length+1,d,sn,st:Math.max(1,Math.min(10,+st||1)),ty,adm:false});act('Collected evidence against '+sn)}
+function addEvent(slot,d,l){S.events.push({slot:+slot,d,l,who:[]});S.events.sort((a,b)=>a.slot-b.slot);act('Recorded event at T+'+slot+'h')}
+function addWho(slot,n){const e=S.events.find(e=>e.slot===+slot);if(!e)return false;if(!e.who.includes(n))e.who.push(n);bump(n,1);return true}
+function rel(a,b,n,s){S.edges.push({a,b,n,s});act('Linked '+a+' <-> '+b)}
+function people(){const p=new Set(S.sus.map(s=>s.name));S.edges.forEach(e=>{p.add(e.a);p.add(e.b)});return[...p]}
+function bfs(a,b){const adj={};S.edges.forEach(e=>{(adj[e.a]=adj[e.a]||[]).push(e.b);(adj[e.b]=adj[e.b]||[]).push(e.a)});
+ if(!people().includes(a)||!people().includes(b))return[];if(a===b)return[a];
+ const par={[a]:null},q=[a];while(q.length){const c=q.shift();for(const n of adj[c]||[])if(!(n in par)){par[n]=c;if(n===b){const p=[];for(let x=b;x!==null;x=par[x])p.unshift(x);return p}q.push(n)}}return[]}
+
+function sample(){
+ addSus('Evelyn Blackwood','The widow of the victim, a socialite.','She was in her bedroom the entire night.','Inheritance of a large fortune.','Had unlimited access to the victim’s drinks.',true);
+ addSus('Marcus Reed','The estate butler for 15 years.','He was in the kitchen until midnight.','Owed a large gambling debt to loan sharks.','Had master keys to every room.',false);
+ addSus('Dr. Henry Pierce','The family physician and longtime friend.','He was in the dining room reviewing papers.','Was being blackmailed by the victim.','Prescribed the victim’s medication.',false);
+ addSus('Victoria Blackwood','The victim’s estranged daughter.','She was travelling out of town.','Recently disinherited by her father.','Was not present at the estate.',false);
+ rel('Evelyn Blackwood','Marcus Reed','Secret affair',6);rel('Evelyn Blackwood','Dr. Henry Pierce','Old acquaintances',3);
+ rel('Marcus Reed','Dr. Henry Pierce','Shared secret',4);rel('Dr. Henry Pierce','Victoria Blackwood','Former doctor',2);
+ [[20,'Dinner served in the grand dining hall','Dining Hall'],[22,'Loud argument heard from Lord Blackwood’s study','Study'],[23,'A figure seen moving toward the library','West Wing Hallway'],[1,'Lord Blackwood found dead in the library','Library'],[2,'Police arrive; estate placed on lockdown','Entrance Hall']].forEach(e=>addEvent(...e));
+ [[20,'Evelyn Blackwood'],[20,'Marcus Reed'],[22,'Dr. Henry Pierce'],[23,'Marcus Reed'],[22,'Evelyn Blackwood']].forEach(x=>addWho(...x));
+ addClue('A broken glass with traces of powder','Study','T+23:40',0);addClue('Partial fingerprint on the desk drawer','Study','T+23:20',0);
+ addClue('Torn strand of dark silk fabric','Library doorframe','T+00:10',0);addClue('Phone records showing a call to a known loan shark','Cellular records','T-3:00',2);
+ addClue('A witness saw someone leaving via the servant stairs','Servant Stairwell','T+00:30',1);
+ [1,2,3].forEach(i=>S.clues[i-1].disc=true);
+ addEv('Sedative found in the glass residue','Evelyn Blackwood',8,3);addEv('Fiber sample matches the widow’s evening attire','Evelyn Blackwood',7,1);
+ addEv('Fingerprint on the desk matches Marcus Reed','Marcus Reed',5,0);addEv('Phone company log of a call to a loan shark','Marcus Reed',4,4);
+ addEv('Medical bottle tampered with while under doctor’s care','Dr. Henry Pierce',3,3);
+ [[1,'Evelyn Blackwood'],[2,'Marcus Reed'],[3,'Evelyn Blackwood']].forEach(([i,n])=>{S.clues[i-1].links.push(n);bump(n,2)});
+ [1,2,3].forEach(i=>S.ev[i-1].adm=true);
+ ['Evelyn Blackwood','Marcus Reed','Dr. Henry Pierce'].forEach(n=>fs(n).int=true);
+}
+
+const TABS=[['overview','Overview'],['suspects','Suspects'],['clues','Clues'],['evidence','Evidence'],['timeline','Timeline'],['network','Network'],['verdict','Verdict']];
+const opts=(a,sel)=>a.map((x,i)=>`<option value="${esc(typeof x==='string'&&a===S._n?x:i)}">${esc(x)}</option>`).join('');
+const nameOpts=()=>S.sus.map(s=>`<option>${esc(s.name)}</option>`).join('');
+const idxOpts=a=>a.map((x,i)=>`<option value="${i}">${x}</option>`).join('');
+const meter=n=>`<div class="bar">${Array.from({length:10},(_,i)=>`<i class="${i<n?'f':''}"></i>`).join('')}</div>`;
+function go(t){S.tab=t;render()}
+function render(){
+ $('case').textContent=S.title+' · Victim: '+S.victim;
+ $('nav').innerHTML=TABS.map(([k,l])=>`<button class="${S.tab===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
+ $('main').innerHTML=V[S.tab]();
+}
+const V={
+ overview(){const lead=[...S.sus].sort((a,b)=>b.lv-a.lv)[0];
+  return `<div class="stats"><div class="stat"><b>${S.sus.length}</b>Suspects</div><div class="stat"><b>${S.clues.length}</b>Clues</div><div class="stat"><b>${S.ev.length}</b>Evidence</div><div class="stat"><b>${S.events.length}</b>Events</div></div>
+  <div class="card"><h3>Lead suspect</h3>${lead?`${esc(lead.name)} <span class="mu">· suspicion ${lead.lv}/10</span>${meter(lead.lv)}`:'<span class="mu">No suspects yet.</span>'}</div>
+  <h2>Investigation history</h2>${S.hist.length?S.hist.slice(0,12).map(h=>`<div class="mu">• ${esc(h)}</div>`).join(''):'<div class="mu">No actions yet.</div>'}`},
+ suspects(){return [...S.sus].sort((a,b)=>b.lv-a.lv).map(s=>`<div class="card"><div class="row"><h3>${esc(s.name)}</h3><span class="tag ${s.int?'ok':'wn'}">${s.int?'Interrogated':'Not interrogated'}</span></div>
+  <div class="mu">${esc(s.d)}</div>${meter(s.lv)}<div class="mu">Suspicion ${s.lv}/10</div>
+  <div><b>Alibi:</b> ${esc(s.a)}</div><div><b>Motive:</b> ${esc(s.m)}</div><div><b>Means:</b> ${esc(s.me)}</div>
+  <p><button class="b" ${s.int?'disabled':''} onclick="interro('${esc(s.name)}')">Interrogate</button></p></div>`).join('')||'<div class="mu">No suspects.</div>'},
+ clues(){return S.clues.map(c=>`<div class="card"><div class="row"><h3>Clue #${c.id}</h3><span class="tag ${c.disc?'ok':'wn'}">${c.disc?'Discovered':'Undiscovered'}</span><span class="tag">${TYPES[c.ty]}</span></div>
+  <div>${esc(c.d)}</div><div class="mu">${esc(c.l)} · ${esc(c.t)}</div>${c.links.length?`<div class="mu">Linked to: ${c.links.map(esc).join(', ')}</div>`:''}
+  <div class="row" style="margin-top:8px"><button class="b" ${c.disc?'disabled':''} onclick="disc(${c.id})">Mark discovered</button><select id="l${c.id}">${nameOpts()}</select><button class="b" onclick="lnk(${c.id})">Link suspect</button></div></div>`).join('')+
+  `<h2>Catalog a clue</h2><div class="card"><div class="form"><input id="cd" placeholder="Description"><input id="cl" placeholder="Location"><input id="ct" placeholder="Time, e.g. T+23:40"><select id="cy">${idxOpts(TYPES)}</select><button class="b p" onclick="newClue()">Add clue</button></div></div>`},
+ evidence(){return S.ev.map(e=>`<div class="card"><div class="row"><h3>Evidence #${e.id}</h3><span class="tag ${e.adm?'ok':'wn'}">${e.adm?'Admissible':'Not admissible'}</span><span class="tag">${ETYPES[e.ty]}</span></div>
+  <div>${esc(e.d)}</div><div class="mu">Implicates: ${esc(e.sn)} · Strength ${e.st}/10</div>${meter(e.st)}
+  <button class="b" ${e.adm?'disabled':''} onclick="adm(${e.id})">Make admissible</button></div>`).join('')+
+  `<h2>Add evidence</h2><div class="card"><div class="form"><input id="ed" placeholder="Description"><select id="es">${nameOpts()}</select><input id="est" type="number" min="1" max="10" value="5"><select id="ey">${idxOpts(ETYPES)}</select><button class="b p" onclick="newEv()">Add evidence</button></div></div>`},
+ timeline(){let prev=null,out=S.events.map(e=>{const gap=prev!==null&&e.slot-prev>4?`<div class="tag wn" style="margin:6px 0">Timeline gap: ${e.slot-prev}h unexplained</div>`:'';prev=e.slot;
+  return gap+`<div class="card"><div class="row"><h3>T+${e.slot}h</h3></div><div>${esc(e.d)}</div><div class="mu">${esc(e.l)}${e.who.length?' · Involved: '+e.who.map(esc).join(', '):''}</div>
+  <div class="row" style="margin-top:8px"><select id="w${e.slot}">${nameOpts()}</select><button class="b" onclick="addToEv(${e.slot})">Add suspect</button></div></div>`}).join('');
+  return `<div class="tl">${out}</div><h2>Add case event</h2><div class="card"><div class="form"><input id="vs" type="number" placeholder="Hour (e.g. 20)"><input id="vd" placeholder="Description"><input id="vl" placeholder="Location"><button class="b p" onclick="newEvent()">Add event</button></div></div>`},
+ network(){const P=people(),sel=`<option>${P.map(esc).join('</option><option>')}</option>`;
+  return P.map(p=>{const r=S.edges.filter(e=>e.a===p||e.b===p);return `<div class="card"><h3>${esc(p)}</h3>${r.map(e=>`<div class="mu">→ ${esc(e.a===p?e.b:e.a)} (${esc(e.n)}, strength ${e.s})</div>`).join('')||'<div class="mu">No known relationships</div>'}</div>`}).join('')+
+  `<h2>Find connection path</h2><div class="card"><div class="form"><select id="pa">${sel}</select><select id="pb">${sel}</select><button class="b p" onclick="findPath()">Find path</button></div>${S.path?`<p>${S.path.length?S.path.map(esc).join(' → ')+` <span class="mu">(${S.path.length-1} step${S.path.length-1===1?'':'s'})</span>`:'No connection found.'}</p>`:''}</div>
+  <h2>Add relationship</h2><div class="card"><div class="form"><select id="ra">${sel}</select><select id="rb">${sel}</select><input id="rn" placeholder="Nature"><input id="rs" type="number" min="1" max="10" value="5"><button class="b p" onclick="newRel()">Add</button></div></div>`},
+ verdict(){const v=S.verdict;let r='';
+  if(v){const s=fs(v),E=S.ev.filter(e=>e.sn===s.name&&e.adm),C=S.clues.filter(c=>c.links.includes(s.name));
+   r=`<div class="card verdict"><h3>Final verdict: ${esc(s.name)}</h3><div class="mu">Case: ${esc(S.title)} · Victim: ${esc(S.victim)}</div>
+   <h2>Admissible evidence</h2>${E.map(e=>`<div>• [E${e.id}] ${esc(e.d)} <span class="mu">(strength ${e.st})</span></div>`).join('')||'<div class="mu">None recorded.</div>'}
+   <h2>Linked clues</h2>${C.map(c=>`<div>• ${esc(c.d)}</div>`).join('')||'<div class="mu">None linked.</div>'}
+   <p><b>Motive:</b> ${esc(s.m)}<br><b>Means:</b> ${esc(s.me)}<br><b>Alibi:</b> ${esc(s.a)}</p>
+   <p><b>${s.g?'GUILTY — the system’s classification confirms the verdict.':'Conditionally charged — the internal model classifies differently, so review the evidence.'}</b></p></div>`}
+  return `<div class="card"><div class="row"><select id="ac">${nameOpts()}</select><button class="b p" onclick="accuse()">Accuse &amp; reach conclusion</button></div></div>`+r}
+};
+function interro(n){fs(n).int=true;act('Interrogated: '+n);toast('Alibi recorded for '+n);render()}
+function disc(id){S.clues[id-1].disc=true;act('Discovered clue #'+id);render()}
+function lnk(id){const n=$('l'+id).value,c=S.clues[id-1];if(!c.links.includes(n))c.links.push(n);bump(n,2);act(`Linked clue #${id} to ${n}`);toast('Linked · suspicion +2');render()}
+function adm(id){S.ev[id-1].adm=true;act('Made evidence #'+id+' admissible');toast('Approved for court');render()}
+function newClue(){const d=$('cd').value.trim();if(!d)return toast('Add a description');addClue(d,$('cl').value||'Unknown',$('ct').value||'—',+$('cy').value);render()}
+function newEv(){const d=$('ed').value.trim();if(!d)return toast('Add a description');addEv(d,$('es').value,$('est').value,+$('ey').value);render()}
+function newEvent(){const s=$('vs').value,d=$('vd').value.trim();if(s===''||!d)return toast('Hour and description needed');addEvent(s,d,$('vl').value||'Unknown');render()}
+function addToEv(slot){addWho(slot,$('w'+slot).value);act('Added suspect to event T+'+slot+'h');render()}
+function findPath(){S.path=bfs($('pa').value,$('pb').value);render()}
+function newRel(){const a=$('ra').value,b=$('rb').value;if(a===b)return toast('Pick two different people');rel(a,b,$('rn').value||'Known',+$('rs').value||1);render()}
+function accuse(){S.verdict=$('ac').value;act('Reached conclusion accusing '+S.verdict);render()}
+sample();render();
+</script></body></html>
